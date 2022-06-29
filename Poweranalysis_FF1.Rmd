@@ -1,0 +1,102 @@
+---
+title: "Poweranalyse"
+subtitle: "Zero-One Inflated Regression"
+author: "Samuel Merk, Sarah Bez, Martin Tomasik"
+date: "`r Sys.Date()`"
+output: tint::tintPdf
+link-citations: yes
+---
+
+```{r setup, include=FALSE}
+library(tint)
+# invalidate cache when the package version changes
+knitr::opts_chunk$set(tidy = FALSE, cache.extra = packageVersion('tint'))
+options(htmltools.dir.version = FALSE)
+```
+
+# Defining the population effect
+As a first step we define the population according to the findings from Study 1.
+```{r, message=FALSE}
+library(bayestestR)
+library(tidyverse)
+library(hrbrthemes)
+
+# setting seed for reproducibility
+set.seed(9174)
+
+data_heatmap <- 
+  c(distribution_beta(203, 4.5, 3),
+    rep(0, 5), rep(1,5))
+
+data_table <- 
+  c(distribution_beta(203, 3, 3.5),
+    rep(0, 8), rep(1,2))
+
+data <- 
+  tibble(
+    ari = c(data_heatmap,
+             data_table),
+    group = c(
+      rep("heatmap", 213),
+      rep("table", 213)
+    ))
+```
+
+
+```{r, fig.margin=TRUE, fig.width=4, fig.height=4, message = F, results = 'hide', warning=FALSE, echo=FALSE}
+ggplot(
+  data, aes(ari)) +
+  geom_histogram() +
+  facet_wrap( ~ group, ncol = 1) +
+  theme_minimal()
+```
+
+The effect size for this data is as follows: 
+
+```{r}
+effsize::VD.A(data_table, data_heatmap)
+```
+
+# Sampling & Estimation
+```{r, results = "hide"}
+# Initialize a vector of results
+CI_with_zero <- logical()
+
+# setting seed for reproducibility
+set.seed(8742)
+
+length_sim <- 1
+
+for (i in 1:length_sim){
+# Sampling
+data_sampled <- 
+  data %>% 
+  group_by(group) %>% 
+  sample_n(100)
+
+# Fitting the model
+library(brms)
+fit <- brm(
+  formula = bf(
+    ari ~ 1 + group),
+  data = data_sampled,
+  silent = 0,
+  family = zero_one_inflated_beta())
+
+fit_summary <- 
+  summary(fit)
+
+# Storing the result
+CI_with_zero[i] <- 
+  sign(fit_summary$fixed$`l-95% CI`[2]) != 
+  sign(fit_summary$fixed$`u-95% CI`[2])
+}
+```
+
+# Power of the Model
+Despite the fact that "power" is a somewhat awkward entity within a Bayesian framework, we use it here to describe the proportion of simulated data sets which to not contain the zero in its highest density interval. This proportion equals:
+
+```{r}
+1 - sum(CI_with_zero)/length_sim |> 
+  round(2)
+```
